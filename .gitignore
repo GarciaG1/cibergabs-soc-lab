@@ -1,0 +1,5 @@
+﻿# entornos y secretos
+.env
+.venv/
+__pycache__/
+*.pyc

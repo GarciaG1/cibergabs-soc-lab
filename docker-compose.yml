@@ -1,0 +1,33 @@
+services:
+  soc:
+    build: ./soc
+    container_name: soclab-soc
+    ports:
+      # Si Windows reservó el 8080 (pasa con Hyper-V/WSL), cambia SOC_PORT en .env
+      - "${SOC_PORT:-8080}:8080"
+    environment:
+      # Opcional: con key, el triage lo hace un agente de IA (Gemini).
+      # Sin key, el lab corre igual en "modo reglas".
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      GEMINI_MODEL: "${GEMINI_MODEL:-gemini-flash-latest}"
+      WATCHFILES_FORCE_POLLING: "true"   # para que --reload vea tus cambios también en Windows/Mac
+    # Taller: tu carpeta soc/ montada dentro del contenedor. Editas, guardas y el
+    # servidor se recarga solo (vuelve a lanzar el ataque después de cada cambio).
+    volumes:
+      - ./soc:/app
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080", "--reload"]
+    restart: unless-stopped
+
+  # Opcional: dispara el ataque solo, sin tocar el dashboard.
+  #   docker compose --profile auto up -d
+  attacker:
+    build: ./attacker
+    container_name: soclab-attacker
+    profiles: ["auto"]
+    environment:
+      SOC_URL: "http://soc:8080"
+      VARIANT: "${VARIANT:-base}"     # base | injection
+      REPLAY: "${REPLAY:-0}"          # segundos entre repeticiones (0 = una vez)
+      DURATION: "${DURATION:-24}"     # segundos reales que dura la noche
+    depends_on:
+      - soc

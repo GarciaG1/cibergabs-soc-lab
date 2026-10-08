@@ -377,6 +377,7 @@ def state():
                       for e in reversed(evs) if e.get("actor") == "attacker" and not e.get("blocked")},
             "alerts": ALERTS, "incidents": INCIDENTS, "actions": ACTIONS, "pending": PENDING,
             "controls": CONTROLS["on"], "attack_running": ATTACK["running"],
+            "agent_running": AGENT["running"],
             "attack_variant": ATTACK["variant"],
             "first_alert": TIMES["first_alert"], "contained": TIMES["contained"], "now": time.time(),
         })
@@ -459,7 +460,20 @@ def stream(mode: str = "auto"):
     """Ejecuta al agente sobre las alertas REALES y transmite lo que hace (SSE)."""
     from agent import run_agent
     def gen():
-        for ev in run_agent(mode=mode):
-            yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
-            time.sleep(0.3)
+        # un solo agente a la vez: dos corriendo sobre la misma cola se estorban
+        if AGENT["running"]:
+            for ev in ({"type": "status", "text": "Ya hay un agente trabajando. Espera a que termine."},
+                       {"type": "done"}):
+                yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
+            return
+        AGENT["running"] = True
+        try:
+            for ev in run_agent(mode=mode):
+                yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
+                time.sleep(0.3)
+        finally:
+            AGENT["running"] = False
     return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+AGENT = {"running": False}

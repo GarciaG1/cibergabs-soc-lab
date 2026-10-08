@@ -140,7 +140,7 @@ def build(variant: str = "base", seed: int = 2026):
     evs += [
         {"at": 25, "type": "password_change", "host": "idp", "user": "jsmith",
          "message": "Cambio de contraseña por autoservicio (MFA verificado)"},
-        {"at": 70, "type": "cert_expiry", "host": "api-gw", "domain": "api.tienda.mx", "days": 7,
+        {"at": 70, "type": "cert_expiry", "host": "api-gw", "domain": "api.tienda.example", "days": 7,
          "message": "Certificado TLS próximo a expirar"},
         {"at": 130, "type": "av_detection", "host": "WKS-1123", "user": "mlopez",
          "signature": "EICAR-Test-File", "message": "Antivirus puso en cuarentena un archivo de prueba"},

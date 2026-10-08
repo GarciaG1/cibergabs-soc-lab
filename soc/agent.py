@@ -30,7 +30,7 @@ from typing import Any, Iterator
 import app as S
 import scenario as SC
 
-MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-latest")
+MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-lite-latest")
 SEV_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
 NEEDS_APPROVAL = {"isolate_host", "disable_account"}   # ── TALLER · Ejercicio 4
 CONTAINMENT_TARGETS = {SC.ATTACKER_IP, SC.VICTIM, "deploy"}
@@ -305,11 +305,13 @@ def _run_ai(key: str) -> Iterator[dict]:
     from google.genai import types
     safe = S.CONTROLS["on"]
     tools = BASE_TOOLS + ([check_change_ticket] if safe else [])
-    client = genai.Client(api_key=key)
+    # máximo 45 s por consulta: si Gemini se atora, reintenta o cae a modo reglas
+    client = genai.Client(api_key=key, http_options=types.HttpOptions(timeout=45000))
     cfg = types.GenerateContentConfig(
         system_instruction=SYSTEM_SAFE if safe else SYSTEM_NAIVE, tools=tools, temperature=0,
         automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True))
     contents = [types.Content(role="user", parts=[types.Part(text="Haz el triage y la respuesta de la cola actual.")])]
+    empujones = 0
     for _ in range(45):
         # Gemini a veces responde 503/429 (saturado): reintenta antes de rendirse
         for intento in range(4):
@@ -317,11 +319,12 @@ def _run_ai(key: str) -> Iterator[dict]:
                 resp = client.models.generate_content(model=MODEL, contents=contents, config=cfg)
                 break
             except Exception as e:  # noqa: BLE001
-                temporal = any(x in str(e) for x in ("503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED"))
+                temporal = any(x in str(e) for x in ("503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED",
+                                                     "timed out", "Timeout", "DEADLINE"))
                 if not temporal or intento == 3:
                     raise
                 espera = 3 * (intento + 1)
-                yield {"type": "status", "text": f"Gemini está saturado, reintento en {espera} s…"}
+                yield {"type": "status", "text": f"Gemini tardó o está saturado, reintento en {espera} s…"}
                 time.sleep(espera)
         cand = resp.candidates[0]
         parts = cand.content.parts or []
@@ -331,6 +334,13 @@ def _run_ai(key: str) -> Iterator[dict]:
             if getattr(p, "text", None) and p.text.strip():
                 yield {"type": "reasoning", "text": p.text.strip()}
         if not fcs:
+            # a veces el modelo se detiene antes de tiempo: si quedan alertas sin atender, que continúe
+            pendientes = sum(1 for a in S.ALERTS if a["status"] == "nueva")
+            if pendientes and empujones < 2:
+                empujones += 1
+                contents.append(types.Content(role="user", parts=[types.Part(
+                    text=f"Todavía hay {pendientes} alertas sin atender. Continúa el triage usando las herramientas.")]))
+                continue
             break
         frs = []
         for fc in fcs:

@@ -9,7 +9,7 @@ services:
       # Opcional: con key, el triage lo hace un agente de IA (Gemini).
       # Sin key, el lab corre igual en "modo reglas".
       GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
-      GEMINI_MODEL: "${GEMINI_MODEL:-gemini-flash-latest}"
+      GEMINI_MODEL: "${GEMINI_MODEL:-gemini-flash-lite-latest}"
       WATCHFILES_FORCE_POLLING: "true"   # para que --reload vea tus cambios también en Windows/Mac
     # Taller: tu carpeta soc/ montada dentro del contenedor. Editas, guardas y el
     # servidor se recarga solo (vuelve a lanzar el ataque después de cada cambio).

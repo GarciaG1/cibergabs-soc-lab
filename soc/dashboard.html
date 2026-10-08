@@ -368,7 +368,7 @@ function render(s){
   }
   $('led').className='led'+(s.attack_running||agentRunning?' busy':'');
   ['b-attack','b-inject','b-reset'].forEach(id=>$(id).disabled=s.attack_running||agentRunning);
-  $('b-agent').disabled=s.attack_running||agentRunning||!s.alerts.some(a=>a.status==='nueva');
+  $('b-agent').disabled=s.attack_running||agentRunning||s.agent_running||!s.alerts.some(a=>a.status==='nueva');
 
   // ---- 1 · logs
   $('l-in').textContent=fmt(s.inbound_total); $('l-ip').textContent=fmt(s.unique_ips); $('l-cc').textContent=fmt(s.countries);
@@ -496,7 +496,15 @@ function sum(html){const c=$('sumbox');if(!c)return;if(c.querySelector('.empty')
   const d=document.createElement('div');d.className='cl';d.style.fontSize='.82rem';d.style.marginBottom='.35rem';d.innerHTML=html;c.appendChild(d);c.scrollTop=c.scrollHeight;}
 const VC={malicious:'red',benign:'green',internal:'cyan',unknown:'amber',info:'mut'};
 
+// lo que el agente está haciendo, visible arriba (la consola detallada sigue abajo)
+function liveStatus(ev){
+  const t={status:ev.text, tool:`Consultando ${ev.label}: ${ev.target}`, incident:`Abrió un incidente: ${ev.title}`,
+    remediation:`${ACTN[ev.action]||ev.action}: ${ev.target}`, pending:`Pide tu aprobación: ${ACTN[ev.action]||ev.action} ${ev.target}`,
+    close:`Descartó la alerta ${ev.alert}`, blocked:'La política le negó una acción', reasoning:'Analizando…'}[ev.type];
+  if(t) $('status').textContent='Agente · '+t;
+}
 function handle(ev){
+  liveStatus(ev);
   switch(ev.type){
     case 'status': $('mode').textContent=ev.text; con(`<span class="p">## ${esc(ev.text)}</span>`); break;
     case 'reasoning': con(`<span class="fg">${esc(ev.text)}</span>`); break;

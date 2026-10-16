@@ -31,6 +31,12 @@ import app as S
 import scenario as SC
 
 MODEL = os.environ.get("GEMINI_MODEL", "gemini-flash-lite-latest")
+# modelos que el dashboard puede elegir (lista cerrada: el navegador no decide qué se llama)
+MODELS = {
+    "gemini-flash-lite-latest": "Flash-Lite",
+    "gemini-flash-latest": "Flash",
+    "gemini-4-argon": "Gemini 4 Argon",
+}
 SEV_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
 NEEDS_APPROVAL = {"isolate_host", "disable_account"}   # ── TALLER · Ejercicio 4
 CONTAINMENT_TARGETS = {SC.ATTACKER_IP, SC.VICTIM, "deploy"}
@@ -283,30 +289,47 @@ def _event_for(name: str, args: dict, result: str) -> dict:
 
 
 # ------------------------------------------------------------------ ejecución
-def run_agent(mode: str = "auto") -> Iterator[dict]:
+def run_agent(mode: str = "auto", model: str | None = None) -> Iterator[dict]:
     key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
     use_ai = bool(key) and mode != "rules"
+    model = model if model in MODELS else MODEL
     ctl = "controles ON" if S.CONTROLS["on"] else "controles OFF"
+    t0 = time.time()
     if not use_ai:
         why = "elegido en el dashboard" if (key and mode == "rules") else "sin GEMINI_API_KEY"
         yield {"type": "status", "text": f"Modo reglas ({why}) · {ctl}"}
-        yield from _run_rules()
+        yield from _strip_done(_run_rules())
+        yield {"type": "stats", "model": "reglas", "label": "Reglas (sin IA)", "seconds": round(time.time() - t0, 1),
+               "calls": 0, "tokens_in": 0, "tokens_out": 0}
+        yield {"type": "done"}
         return
-    yield {"type": "status", "text": f"Agente de IA en línea ({MODEL}) · {ctl}"}
+    yield {"type": "status", "text": f"Agente de IA en línea ({MODELS.get(model, model)}) · {ctl}"}
+    usage = {"calls": 0, "tokens_in": 0, "tokens_out": 0}
     try:
-        yield from _run_ai(key)
+        yield from _strip_done(_run_ai(key, model, usage))
+        yield {"type": "stats", "model": model, "label": MODELS.get(model, model),
+               "seconds": round(time.time() - t0, 1), **usage}
     except Exception as e:  # noqa: BLE001
         yield {"type": "status", "text": f"Error de IA: {e} — cambio a modo reglas"}
-        yield from _run_rules()
+        yield from _strip_done(_run_rules())
+    yield {"type": "done"}
 
 
-def _run_ai(key: str) -> Iterator[dict]:
+def _strip_done(gen: Iterator[dict]) -> Iterator[dict]:
+    """Pasa los eventos de un analista, sin su 'done' (lo emite run_agent al final)."""
+    for ev in gen:
+        if ev.get("type") != "done":
+            yield ev
+
+
+def _run_ai(key: str, model: str = MODEL, usage: dict | None = None) -> Iterator[dict]:
+    usage = usage if usage is not None else {}
     from google import genai
     from google.genai import types
     safe = S.CONTROLS["on"]
     tools = BASE_TOOLS + ([check_change_ticket] if safe else [])
-    # máximo 45 s por consulta: si Gemini se atora, reintenta o cae a modo reglas
-    client = genai.Client(api_key=key, http_options=types.HttpOptions(timeout=45000))
+    # tiempo máximo por consulta (Argon razona más y tarda más): si se atora, reintenta o cae a reglas
+    client = genai.Client(api_key=key, http_options=types.HttpOptions(timeout=90000 if "argon" in model else 45000))
     cfg = types.GenerateContentConfig(
         system_instruction=SYSTEM_SAFE if safe else SYSTEM_NAIVE, tools=tools, temperature=0,
         automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True))
@@ -316,7 +339,7 @@ def _run_ai(key: str) -> Iterator[dict]:
         # Gemini a veces responde 503/429 (saturado): reintenta antes de rendirse
         for intento in range(4):
             try:
-                resp = client.models.generate_content(model=MODEL, contents=contents, config=cfg)
+                resp = client.models.generate_content(model=model, contents=contents, config=cfg)
                 break
             except Exception as e:  # noqa: BLE001
                 temporal = any(x in str(e) for x in ("503", "429", "UNAVAILABLE", "RESOURCE_EXHAUSTED",
@@ -326,6 +349,12 @@ def _run_ai(key: str) -> Iterator[dict]:
                 espera = 3 * (intento + 1)
                 yield {"type": "status", "text": f"Gemini tardó o está saturado, reintento en {espera} s…"}
                 time.sleep(espera)
+        um = getattr(resp, "usage_metadata", None)
+        usage["calls"] = usage.get("calls", 0) + 1
+        if um:
+            usage["tokens_in"] = usage.get("tokens_in", 0) + (um.prompt_token_count or 0)
+            usage["tokens_out"] = usage.get("tokens_out", 0) + (um.candidates_token_count or 0) + \
+                (getattr(um, "thoughts_token_count", None) or 0)
         cand = resp.candidates[0]
         parts = cand.content.parts or []
         contents.append(cand.content)

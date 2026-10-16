@@ -456,7 +456,7 @@ def attack_status():
 
 
 @app.get("/stream")
-def stream(mode: str = "auto"):
+def stream(mode: str = "auto", model: str = ""):
     """Ejecuta al agente sobre las alertas REALES y transmite lo que hace (SSE)."""
     from agent import run_agent
     def gen():
@@ -468,7 +468,7 @@ def stream(mode: str = "auto"):
             return
         AGENT["running"] = True
         try:
-            for ev in run_agent(mode=mode):
+            for ev in run_agent(mode=mode, model=model or None):
                 yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
                 time.sleep(0.3)
         finally:

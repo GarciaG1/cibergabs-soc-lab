@@ -14,6 +14,7 @@ Reproduce una noche en un servidor recién publicado en internet y la recorre po
 | **1 · Logs** | Lo que llega al servidor, con el formato real de Ubuntu (nginx, auth.log) y los "top" de IPs, países, rutas y usuarios |
 | **2 · Perímetro** | Cuatro defensas básicas que prendes en vivo y cuánto tráfico frena cada una |
 | **3 · SOC + IA** | Las alertas del SIEM y el agente que las correlaciona, contiene y te pide aprobación para lo destructivo |
+| **4 · Modelos** | Comparativa de cada corrida: modelo, resultado, tiempo, consultas y tokens |
 
 ## Arranque rápido
 
@@ -42,7 +43,7 @@ uvicorn app:app --reload --port 8080
 
 | Tecla | Hace |
 |---|---|
-| `1` `2` `3` | Cambia de vista |
+| `1` `2` `3` `4` | Cambia de vista |
 | `A` | Lanza el ataque: una noche simulada en 24 segundos |
 | `N` | El mismo ataque, con una nota falsa para tu agente (prompt injection) |
 | `E` | Ejecuta el agente |
@@ -59,7 +60,17 @@ Recorrido sugerido: vista 1 + `A` → vista 2, prende las 4 capas + `A` → vist
 | **Sin key** | **Modo reglas**: un analista programado. El lab funciona igual |
 
 La key de Google AI Studio tiene capa gratuita: https://aistudio.google.com/apikey.
-En la vista 3 puedes cambiar entre **IA** y **Reglas** para compararlos.
+
+En la vista 3 eliges el motor del agente:
+
+| Motor | Para qué |
+|---|---|
+| **Flash-Lite** | Rápido y económico (el predeterminado, funciona con la capa gratuita) |
+| **Flash** | Punto medio. A veces está saturado |
+| **Gemini 4 Argon** | El más capaz. De pago y con acceso limitado: si tu key no lo tiene, usa los otros |
+| **Reglas** | Sin IA, para comparar |
+
+Cada corrida queda registrada en la vista 4 para comparar modelos con el mismo ataque.
 
 ## Taller
 
